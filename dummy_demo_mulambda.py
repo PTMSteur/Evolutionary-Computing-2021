@@ -4,11 +4,12 @@ sys.path.insert(0, 'evoman')
 from environment import Environment
 from demo_controller import player_controller
 from deap import base, creator, tools, algorithms
-import scipy.stats as stats
-from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
-import seaborn as sns
+import multiprocessing
+from collections.abc import Sequence
+from itertools import repeat
 
+import random
 import argparse
 import numpy as np
 import pandas as pd
@@ -24,6 +25,37 @@ class HiddenPrints:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
+
+def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
+    """
+	Modified Gaussian mutation from DEAP accounting for a sigma attribute in the genotype
+    """
+    if control_sigma is True:
+        sigma = np.abs(individual[-1]) # Overwrite the global sigma with the one in the genotype
+    
+    # Need to repeat mu en sigma for every entry in the genotype
+    size = len(individual)
+    if not isinstance(mu, Sequence):
+        mu = repeat(mu, size)
+    elif len(mu) < size:
+        raise IndexError("mu must be at least the size of individual: %d < %d" % (len(mu), size))
+    if not isinstance(sigma, Sequence):
+        sigma = repeat(sigma, size)
+    elif len(sigma) < size:
+        raise IndexError("sigma must be at least the size of individual: %d < %d" % (len(sigma), size))
+
+    if control_sigma is True:
+        for i, m, s in zip(range(size-1), mu, sigma):
+            if random.random() < indpb:
+                individual[i] += random.gauss(m, s)
+        if random.random() < indpb:
+            individual[-1] = np.abs(individual[-1])*np.exp(random.gauss(0, 1/np.sqrt(size-1)))
+    else:
+        for i, m, s in zip(range(size), mu, sigma):
+            if random.random() < indpb:
+                individual[i] += random.gauss(m, s)
+
+    return individual,
         
 # Plot the line plots for the average mean and maximum of the algorithm runs
 def visualize(logbook):
@@ -43,54 +75,6 @@ def visualize(logbook):
     plt.legend()
     plt.show()
     
-def computeAvgGains(df, repeats, env):
-    avg_gains = []
-    for i in range(0,FLAGS.runs):
-        gain_sum = 0
-        for r in range(repeats):
-            with HiddenPrints():
-                f,p,e,t = env.play(pcont=np.array(df.iloc[i][1:]))
-            gain_sum = gain_sum + p-e
-        avg_gains.append(gain_sum/repeats)
-            
-    return avg_gains
-    
-# Let the individuals in the files play a repeats amount of times for a robust indication of their performance
-def testSols(repeats, env, file1, file2, file3=None, file4=None, file5=None, file6=None):
-    df_c1 = pd.read_csv(file1)
-    df_p1 = pd.read_csv(file2)
-    if file3:
-        df_c2 = pd.read_csv(file3)
-        df_p2 = pd.read_csv(file4)
-        df_c3 = pd.read_csv(file5)
-        df_p3 = pd.read_csv(file6)
-    
-    gains = []
-    gains.append(computeAvgGains(df_c1, repeats, env))
-    gains.append(computeAvgGains(df_p1, repeats, env))
-    if file3:
-        gains.append(computeAvgGains(df_c2, repeats, env))
-        gains.append(computeAvgGains(df_p2, repeats, env))
-        gains.append(computeAvgGains(df_c3, repeats, env))
-        gains.append(computeAvgGains(df_p3, repeats, env))
-    
-    # Statistical test
-    stat, pvalue = stats.ttest_ind(gains[0], gains[1])
-    print('Student T-test p-value: ' + str(round(pvalue, 4)))
-    
-    # Boxplot function here
-    
-    
-    
-    b = sns.boxplot(data=[gains[0], gains[1]],
-                    palette=[sns.xkcd_rgb["pale red"], sns.xkcd_rgb["medium green"]])
-    
-    b.set_title('Averaged Gain of Best Players per Run on Enemy ' + str(FLAGS.enemy))
-    b.set_ylabel('Individual Gain')
-    b.set_xticklabels(['CommaElite', 'Comma'])
-    plt.show()
-    
-    
 def experiment():
     experiment_name = 'Task_I_Enemy_' + str(FLAGS.enemy)
     if not os.path.exists(experiment_name):
@@ -99,19 +83,21 @@ def experiment():
         os.environ["SDL_VIDEODRIVER"] = "dummy"
     
     ## Tweakable parameters
-    ntest = 1                       # Plays per individual over which fitness is averaged; more than 1 will take a lot of time
     npop = 20                       # Population size
     gens = 30                       # Nr of generations per run
-    elite_group = 2                 # Elite group size
+    elite_group = 1                 # Elite group size
     mutation = 0.2                  # Mutation probability
     cross = 0.8                     # Crossover probability
     cpg = 60                        # Children per gen
     controller_neurons = 10         # Hidden neurons in the controller
-    printlog = True
+    delta = 12                      # Clearing allowed distance
+    n_top = 2                       # Clearing allowed group size
+    order = 1                       # Norm order for distance metric
+    printlog = True                 # Print logbook stream if True; otherwise env.play() output
 
     # Initializes environment
     env = Environment(experiment_name=experiment_name,
-                         multiplemode="yes",
+                         multiplemode="yes" if len(FLAGS.enemy) > 1 else "no",
                          enemies=FLAGS.enemy,
                          playermode="ai",
                          player_controller=player_controller(controller_neurons),
@@ -119,31 +105,22 @@ def experiment():
                          enemymode="static",
                          level=2,
                          speed="fastest",
-                         timeexpire = FLAGS.budget)
+                         timeexpire = 500)
     
     # Structure of the genotype of each individual and their fitness evaluation function
-    geno_length = (env.get_num_sensors()+1) * controller_neurons + (controller_neurons+1)*5
+    geno_length = (env.get_num_sensors()+1) * controller_neurons + (controller_neurons+1)*5 + 1
     
-    # Change this if you wish
-    # def fitness(p,e,t):
-    #     return 0.9*(100 - e) + 0.1*p - np.log(t)
-    
-    def nTest(n, ind, env):
-        score = 0
-        fit = 0
-        for t in range(n):
-            f,p,e,time = env.play(pcont=ind)
-            score = score + p-e
-            fit += f
-        return score/n, fit/n
+    def fitness(ind):
+        f,p,e,time = env.play(pcont=ind[:-1])
+        return f
         
-    def evalIndividual(ind, env):
+    def evalIndividual(ind):
         if printlog:
             with HiddenPrints():
-                g_avg, f_avg = nTest(ntest, ind, env)
+                f_avg = fitness(ind)
                 return (f_avg,)
         else:
-            g_avg, f_avg = nTest(ntest, ind, env)
+            f_avg = fitness(ind)
             return (f_avg,)
     
     ## DEAP Framework Setup
@@ -161,31 +138,54 @@ def experiment():
     tb.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.5)
     tb.register("select", tools.selTournament, tournsize=4)
     
+    # Allow multiprocessing on the mapping of fitness evaluations to individuals, if desired
+    # if FLAGS.multi:
+    #     pool = multiprocessing.Pool()
+    #     tb.register("map", pool.map)
+    
     # Logbook for keeping track of the statistics
     stats = tools.Statistics(key=lambda p: p.fitness.values)
     stats.register("mean", np.mean)
     stats.register("max", np.max)
     logbook = tools.Logbook()
     
+    def clearing_algorithm(offs):
+        offs.sort(key=lambda x: x.fitness, reverse=True)
+    
+        distances = []
+        for i in range(len(offs)):
+            fit_i = offs[i].fitness.values[0] # int(float((''.join(map(str, offspring[i].fitness.values)))))
+            if fit_i > -9:
+                winners = 1
+                for j in range(i+1, len(offs)):
+                    fit_j = offs[j].fitness.values[0] # int(float((''.join(map(str, offspring[j].fitness.values)))))
+                    dist = np.linalg.norm(np.array(offs[i][:-1])-np.array(offs[j][:-1]), ord=order)
+                    distances.append(dist)
+                    if fit_j > -9 and dist < delta:
+                        if winners < n_top:
+                            winners = winners + 1
+                        else:
+                            offs[j].fitness.values = (-10.0,)
+        return offs
+    
     # Function to evaluate all (new) individuals that do not yet have a fitness  
-    def evalPopulation(g, pop, env):
+    def evalPopulation(pop, env):
         to_evaluate = [ind for ind in pop if not ind.fitness.valid]
-        fit_map = tb.map( tb.evaluate, to_evaluate, [env for i in range(len(pop))] )
+        fit_map = tb.map( tb.evaluate, to_evaluate )
         for p, f in zip(pop, fit_map):
             p.fitness.values = f
-            p.origin = g
             
-        return pop, len(to_evaluate) * ntest * len(FLAGS.enemy)
+        return pop, len(to_evaluate) * len(FLAGS.enemy)
      
     # muLambda algorithm adjusted for having a protected elite group
-    def muCommaLambda(runs, eatype='Comma'):
+    def muLambda(runs, eatype='Comma'):
         assert cpg >= npop, "Must create enough offspring to replace population"
-            
         run_winners = pd.DataFrame(index=range(1,runs+1), columns=['w' + str(x) for x in range(1,geno_length+1)] )
+        
         for r in range(1,runs+1):
             print("--- Run " + str(r) + " starts now ---")
             pop = tb.population(n=npop)
-            pop, nevals = evalPopulation(0, pop, env)
+            pop, nevals = evalPopulation(pop, env)
             tevals = nevals
             
             hof = tools.HallOfFame(elite_group if elite_group > 0 else 1, similar=np.array_equal)
@@ -196,21 +196,14 @@ def experiment():
             if printlog:
                 print(logbook.stream)
             
+            # Generational loop
             for g in range(1,gens+1):
                 offs = algorithms.varOr(pop,tb,cpg,cross,mutation)
-                offs, nevals = evalPopulation(g, offs, env)
+                offs, nevals = evalPopulation(offs, env)
                 tevals += nevals 
                 
-                # hof.update(offs)
-                
-                # The only difference between the options is this if statement
-                if eatype == 'CommaElite':
-                    pop = tb.select(offs, npop-len(hof.items) if elite_group > 0 else npop)
-                    pop = pop + hof.items
-                elif eatype == 'Comma':
-                    pop = tb.select(offs, npop)
-                elif eatype == 'Plus':
-                    pop = tb.select(pop + offs, npop)
+                offs = clearing_algorithm(offs)
+                pop = tb.select(offs, npop)
                     
                 hof.update(pop)
                     
@@ -220,50 +213,39 @@ def experiment():
                 if printlog:
                     print(logbook.stream)
             
-            # Since the final population is less likely to be in a local minimum than earlier populations,
-            # We favour younger individuals for the position of best player,
-            # If they have a winning fitness and aren't much worse than the best fitness ever seen
-            pop.sort(key=lambda x: x.fitness.values, reverse=True)
-            if pop[0].fitness.values[0] > 90 and pop[0].fitness.values[0] > hof.items[0].fitness.values[0] - 1:
-                run_winners.loc[r,:] = pop[0]
-            else:
-                run_winners.loc[r,:] = hof.items[0]
-                
+            # Assign the highest fitness individual from the run to a dataframe
+            run_winners.loc[r,:] = hof.items[0]
+        
         return run_winners
     
-    # Execute Code
+    # Execute Algorithms
     ini = time.time()
-    if not FLAGS.test:
-        run_winners_c = muCommaLambda(FLAGS.runs) # Execute Algorithm 1
-        run_winners_p = muCommaLambda(FLAGS.runs) # Execute Algorithm 2
+    if not FLAGS.plot:
+        run_winners_EA1 = muLambda(FLAGS.runs) # Execute Algorithm 1
+        # run_winners_EA2 = muLambda(FLAGS.runs) # Execute Algorithm 2
     fim = time.time()
     print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
     
-    if not FLAGS.test:
+    if not FLAGS.plot:
         # Write the best individual from each run to a csv    
-        run_winners_c.to_csv('run_winners_Comma_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-        run_winners_p.to_csv('run_winners_Comma_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+        run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+        # run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
         # Write the logbook to a csv
         log_df = pd.DataFrame(logbook)
         log_df.to_csv('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
     
-    # Visualization and Repeated Testing
+    # Visualization of logbook
     visualize('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-        
-    testSols(repeats=5, env=env, 
-             file1='run_winners_Comma_enemy_' + str(FLAGS.enemy) + '_task_II.csv',
-             file2='run_winners_Comma_enemy_' + str(FLAGS.enemy) + '_task_II.csv'
-             )
 
 
 # Make variables passable from command line for quick changes
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--enemy', type=list, default=[4,6,7])
-    parser.add_argument('--budget', type=int, default=500)
-    parser.add_argument('--headless', type=bool, default=True)  # If True, does not depict games on screen
-    parser.add_argument('--runs', type=int, default=10)
-    parser.add_argument('--test', type=bool, default=False) # If True, skips algorithm and just plots with latest CSVs
+    parser.add_argument('--enemy', nargs='+', type=int, default=[1, 2, 3])      # Training Enemy IDs
+    parser.add_argument('--runs', type=int, default=10)                         # Number of runs per EA
+    parser.add_argument('--multi', type=bool, default=False)                    # If True, enables multiprocessing of fitness maps
+    parser.add_argument('--headless', type=bool, default=True)                  # If True, does not depict games on screen
+    parser.add_argument('--plot', type=bool, default=False)                     # If True, skips algorithm and just plots with latest CSVs
     
     FLAGS, unparsed = parser.parse_known_args()
     
