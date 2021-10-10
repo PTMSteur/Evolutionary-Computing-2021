@@ -99,7 +99,7 @@ tb.register("population", tools.initRepeat, list, tb.individual, n=npop)
 tb.register("evaluate", evalIndividual)
 tb.register("mate", tools.cxBlend, alpha=0.5)
 tb.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.5)
-tb.register("select", tools.selTournament, tournsize=5)
+tb.register("select", tools.selTournament, tournsize=7)
 
 # Logbook for keeping track of the statistics during te experiment
 stats = tools.Statistics(key=lambda p: p.fitness.values)
