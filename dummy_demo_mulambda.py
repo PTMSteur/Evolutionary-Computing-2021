@@ -27,10 +27,15 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument('--enemy', nargs='+', type=int, default=[1, 2, 3])          # Training Enemy IDs
 parser.add_argument('--runs', type=int, default=10)                             # Number of runs per EA
-parser.add_argument('--multi', type=bool, default=True)                         # If True, enables multiprocessing of fitness maps
 parser.add_argument('--headless', type=bool, default=True)                      # If True, does not depict games on screen
 parser.add_argument('--plot', type=bool, default=False)                         # If True, skips algorithm and just plots with latest CSVs
-    
+
+# Add these to the command to run with or without multiprocessing; By default multi is used
+parser.add_argument('--multi', dest='multi', default=True, action='store_true')
+parser.add_argument('--single', dest='single', default=False, action='store_false')
+
+# Example use: 
+# python dummy_demo_mulambda.py --enemy 1 2 3 --runs=10 --multi
 FLAGS, unparsed = parser.parse_known_args()
 
 # Initializes EvoMan environment
@@ -183,7 +188,7 @@ def evalPopulation(pop, env):
     return pop, len(to_evaluate) * len(FLAGS.enemy)
 
 # muLambda algorithm from DEAP adjusted for being able to have a protected elite group of individuals
-def muLambda(runs, eatype='Comma'):
+def muLambda(runs, eatype='Comma', clearing=True):
     assert cpg >= npop, "Must create enough offspring to replace population"
     run_winners = pd.DataFrame(index=range(1,runs+1), columns=['w' + str(x) for x in range(1,geno_length+1)] )
         
@@ -207,11 +212,12 @@ def muLambda(runs, eatype='Comma'):
             tevals += nevals 
                 
             if eatype=='Comma':
-                offs = clearing_algorithm(offs)
+                offs = clearing_algorithm(offs) if clearing else offs
                 pop = tb.select(offs, npop)
             elif eatype=='CommaElite':
-                offs = clearing_algorithm(offs + hof.items)
-                pop = tb.select(offs, npop)
+                offs = clearing_algorithm(offs + hof.items) if clearing else offs
+                pop = tb.select(offs, npop if clearing else npop - len(hof.items))
+                pop = pop if clearing else pop + hof.items
                     
             hof.update(pop)
             record = stats.compile(pop)
@@ -229,8 +235,8 @@ def experiment():
     ini = time.time()
     
     if not FLAGS.plot:
-        run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite') # Execute Algorithm 1
-        # run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite') # Execute Algorithm 2
+        run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=True) # Execute Algorithm 1
+        run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=False) # Execute Algorithm 2
         
     fim = time.time()
     print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
@@ -238,7 +244,7 @@ def experiment():
     if not FLAGS.plot:
         # Write the best individual from each run to a csv    
         run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-        # run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+        run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
         
         # Write the logbook to a csv
         log_df = pd.DataFrame(logbook)
