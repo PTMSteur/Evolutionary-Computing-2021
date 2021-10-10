@@ -108,25 +108,6 @@ stats.register("max", np.max)
 logbook = tools.Logbook()
 
 
-# Function for plotting the line plots for the average mean and maximum of the algorithm runs
-def visualize(logbook):
-    df = pd.read_csv(logbook)
-    
-    name1, name2 = df.ea.unique()
-    df_c = df[df['ea']==name1].groupby('gen').mean()
-    df_p = df[df['ea']==name2].groupby('gen').mean()
-    
-    plt.plot(df_c.index, df_c['max'], label='Avg. Max Fit '+name1)
-    plt.plot(df_c.index, df_c['mean'], label='Avg. Mean Fit '+name1)
-    plt.plot(df_p.index, df_p['max'], label='Avg. Max Fit '+name2)
-    plt.plot(df_p.index, df_p['mean'], label='Avg. Mean Fit '+name2)
-    plt.title("Avg. Fitness Stats over " + str(FLAGS.runs) + " Runs - Enemy " + str(FLAGS.enemy))
-    plt.xlabel("Generation")
-    plt.ylabel("Fitness")
-    plt.legend()
-    plt.show()
-
-
 def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
     """
 	Modified Gaussian mutation from DEAP accounting for a sigma attribute in the genotype
@@ -233,25 +214,18 @@ def muLambda(runs, eatype='Comma', clearing=True):
 # Execute the algorithms
 def experiment():    
     ini = time.time()
-    
-    if not FLAGS.plot:
-        run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=True) # Execute Algorithm 1
-        run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=False) # Execute Algorithm 2
-        
+    run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=True) # Execute Algorithm 1
+    run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=False) # Execute Algorithm 2
     fim = time.time()
     print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
     
-    if not FLAGS.plot:
-        # Write the best individual from each run to a csv    
-        run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-        run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+    # Write the best individual from each run to a csv    
+    run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+    run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
         
-        # Write the logbook to a csv
-        log_df = pd.DataFrame(logbook)
-        log_df.to_csv('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-    
-    # Visualization of logbook
-    visualize('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+    # Write the logbook to a csv
+    log_df = pd.DataFrame(logbook)
+    log_df.to_csv('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
 
 
 # Make variables passable from command line for quick changes
