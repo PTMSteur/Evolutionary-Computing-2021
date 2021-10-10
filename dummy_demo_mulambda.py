@@ -203,7 +203,11 @@ def experiment():
                 tevals += nevals 
                 
                 offs = clearing_algorithm(offs)
-                pop = tb.select(offs, npop)
+                if eatype=='Comma':
+                    pop = tb.select(offs, npop)
+                elif eatype=='CommaElite':
+                    offs = tb.select(offs, npop-len(hof.items))
+                    pop = offs + hof.items
                     
                 hof.update(pop)
                     
