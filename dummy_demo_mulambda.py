@@ -207,7 +207,7 @@ def muLambda(runs, eatype='Comma', clearing=True):
                 print(logbook.stream)
             
         # Assign the highest fitness individual from the run to a dataframe
-        run_winners.loc[r,:] = hof.items[0]
+        run_winners.loc[r,:] = hof.items[0][:-1]
     return run_winners
 
 
