@@ -82,7 +82,7 @@ elite_group = 4                 # Elite group size
 mutation = 0.2                  # Mutation probability
 cross = 0.8                     # Crossover probability
 cpg = 150                       # Children per gen
-delta = 125                     # Clearing allowed distance
+delta = 115                     # Clearing allowed distance
 n_top = 2                       # Clearing allowed group size
 order = 1                       # Norm order for distance metric
 
