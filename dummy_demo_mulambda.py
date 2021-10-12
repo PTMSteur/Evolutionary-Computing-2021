@@ -75,6 +75,33 @@ def evalIndividual(ind):
         f_avg = fitness(ind)
         return (f_avg,)
 
+def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
+    """
+	Modified Gaussian mutation from DEAP accounting for a sigma attribute in the genotype
+    """
+    if control_sigma is True:
+        # Mutate sigma first with probability indpb
+        if random.random() < indpb:
+            individual[-1] = np.abs(individual[-1])*np.exp(random.gauss(0, 1/np.sqrt(geno_length-1)))
+        sigma = np.abs(individual[-1]) # Overwrite the global sigma with the one in the genotype
+    
+    # Need to repeat mu en sigma for every entry in the genotype
+    size = len(individual)
+    if not isinstance(mu, Sequence):
+        mu = repeat(mu, size)
+    elif len(mu) < size:
+        raise IndexError("mu must be at least the size of individual: %d < %d" % (len(mu), size))
+    if not isinstance(sigma, Sequence):
+        sigma = repeat(sigma, size)
+    elif len(sigma) < size:
+        raise IndexError("sigma must be at least the size of individual: %d < %d" % (len(sigma), size))
+
+    for i, m, s in zip(range(size-1), mu, sigma):
+        if random.random() < indpb:
+            individual[i] += random.gauss(m, s)
+
+    return individual,
+
 ## Tweakable parameters
 npop = 50                       # Population size
 gens = 30                       # Nr of generations per run
@@ -98,7 +125,7 @@ tb.register("population", tools.initRepeat, list, tb.individual, n=npop)
 # Evaluation, Crossover, Mutation and Selection functions of choice
 tb.register("evaluate", evalIndividual)
 tb.register("mate", tools.cxBlend, alpha=0.5)
-tb.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.5)
+tb.register("mutate", mutGaussian, mu=0, sigma=1, indpb=0.5)
 tb.register("select", tools.selTournament, tournsize=7)
 
 # Logbook for keeping track of the statistics during te experiment
@@ -106,39 +133,6 @@ stats = tools.Statistics(key=lambda p: p.fitness.values)
 stats.register("mean", np.mean)
 stats.register("max", np.max)
 logbook = tools.Logbook()
-
-
-def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
-    """
-	Modified Gaussian mutation from DEAP accounting for a sigma attribute in the genotype
-    """
-    if control_sigma is True:
-        sigma = np.abs(individual[-1]) # Overwrite the global sigma with the one in the genotype
-    
-    # Need to repeat mu en sigma for every entry in the genotype
-    size = len(individual)
-    if not isinstance(mu, Sequence):
-        mu = repeat(mu, size)
-    elif len(mu) < size:
-        raise IndexError("mu must be at least the size of individual: %d < %d" % (len(mu), size))
-    if not isinstance(sigma, Sequence):
-        sigma = repeat(sigma, size)
-    elif len(sigma) < size:
-        raise IndexError("sigma must be at least the size of individual: %d < %d" % (len(sigma), size))
-
-    if control_sigma is True:
-        for i, m, s in zip(range(size-1), mu, sigma):
-            if random.random() < indpb:
-                individual[i] += random.gauss(m, s)
-        if random.random() < indpb:
-            individual[-1] = np.abs(individual[-1])*np.exp(random.gauss(0, 1/np.sqrt(size-1)))
-    else:
-        for i, m, s in zip(range(size), mu, sigma):
-            if random.random() < indpb:
-                individual[i] += random.gauss(m, s)
-
-    return individual,
-
 
 def clearing_algorithm(offs):
     offs.sort(key=lambda x: x.fitness, reverse=True)
@@ -158,6 +152,7 @@ def clearing_algorithm(offs):
                     else:
                         offs[j].fitness.values = (-10.0,)
     return offs
+
 
 # Function to evaluate all (new) individuals that do not yet have a fitness  
 def evalPopulation(pop, env):
