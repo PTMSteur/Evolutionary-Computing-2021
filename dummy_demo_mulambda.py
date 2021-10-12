@@ -76,13 +76,13 @@ def evalIndividual(ind):
         return (f_avg,)
 
 ## Tweakable parameters
-npop = 25                       # Population size
+npop = 50                       # Population size
 gens = 30                       # Nr of generations per run
-elite_group = 5                 # Elite group size
+elite_group = 4                 # Elite group size
 mutation = 0.2                  # Mutation probability
 cross = 0.8                     # Crossover probability
-cpg = 75                        # Children per gen
-delta = 12                      # Clearing allowed distance
+cpg = 150                       # Children per gen
+delta = 125                     # Clearing allowed distance
 n_top = 2                       # Clearing allowed group size
 order = 1                       # Norm order for distance metric
 
@@ -171,7 +171,7 @@ def evalPopulation(pop, env):
 # muLambda algorithm from DEAP adjusted for being able to have a protected elite group of individuals
 def muLambda(runs, eatype='Comma', clearing=True):
     assert cpg >= npop, "Must create enough offspring to replace population"
-    run_winners = pd.DataFrame(index=range(1,runs+1), columns=['w' + str(x) for x in range(1,geno_length+1)] )
+    run_winners = pd.DataFrame(index=range(1,runs+1), columns=['w' + str(x) for x in range(1,geno_length)] )
         
     for r in range(1,runs+1):
         print("--- Run " + str(r) + " starts now ---")
