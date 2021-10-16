@@ -24,6 +24,8 @@ import pandas as pd
 import time
 
 # Command line arguments
+# Example use: 
+# python dummy_demo_mulambda.py --enemy 1 2 3 --runs=10 --multi
 parser = argparse.ArgumentParser()
 parser.add_argument('--enemy', nargs='+', type=int, default=[1, 2, 3])          # Training Enemy IDs
 parser.add_argument('--runs', type=int, default=10)                             # Number of runs per EA
@@ -34,8 +36,6 @@ parser.add_argument('--plot', type=bool, default=False)                         
 parser.add_argument('--multi', dest='multi', default=True, action='store_true')
 parser.add_argument('--single', dest='single', default=False, action='store_false')
 
-# Example use: 
-# python dummy_demo_mulambda.py --enemy 1 2 3 --runs=10 --multi
 FLAGS, unparsed = parser.parse_known_args()
 
 # Initializes EvoMan environment
@@ -74,7 +74,7 @@ def evalIndividual(ind):
     else:
         f_avg = fitness(ind)
         return (f_avg,)
-
+    
 def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
     """
 	Modified Gaussian mutation from DEAP accounting for a sigma attribute in the genotype
@@ -105,12 +105,12 @@ def mutGaussian(individual, mu, sigma, indpb, control_sigma=True):
 ## Tweakable parameters
 npop = 50                       # Population size
 gens = 30                       # Nr of generations per run
-elite_group = 4                 # Elite group size
+elite_group = 5                 # Elite group size
 mutation = 0.2                  # Mutation probability
 cross = 0.8                     # Crossover probability
 cpg = 150                       # Children per gen
-delta = 115                     # Clearing allowed distance
-n_top = 2                       # Clearing allowed group size
+delta = 120                     # Clearing allowed distance
+n_top = 5                       # Clearing allowed group size
 order = 1                       # Norm order for distance metric
 
 # Setup DEAP Framework
@@ -126,7 +126,7 @@ tb.register("population", tools.initRepeat, list, tb.individual, n=npop)
 tb.register("evaluate", evalIndividual)
 tb.register("mate", tools.cxBlend, alpha=0.5)
 tb.register("mutate", mutGaussian, mu=0, sigma=1, indpb=0.5)
-tb.register("select", tools.selTournament, tournsize=7)
+tb.register("select", tools.selTournament, tournsize=13)
 
 # Logbook for keeping track of the statistics during te experiment
 stats = tools.Statistics(key=lambda p: p.fitness.values)
@@ -151,8 +151,8 @@ def clearing_algorithm(offs):
                         winners = winners + 1
                     else:
                         offs[j].fitness.values = (-10.0,)
+    
     return offs
-
 
 # Function to evaluate all (new) individuals that do not yet have a fitness  
 def evalPopulation(pop, env):
@@ -209,18 +209,22 @@ def muLambda(runs, eatype='Comma', clearing=True):
 # Execute the algorithms
 def experiment():    
     ini = time.time()
-    run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=True) # Execute Algorithm 1
-    run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=False) # Execute Algorithm 2
+    
+    if not FLAGS.plot:
+        run_winners_EA1 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=True) # Execute Algorithm 1
+        run_winners_EA2 = muLambda(FLAGS.runs, eatype='CommaElite', clearing=False) # Execute Algorithm 2
+        
     fim = time.time()
     print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
     
-    # Write the best individual from each run to a csv    
-    run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
-    run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+    if not FLAGS.plot:
+        # Write the best individual from each run to a csv    
+        run_winners_EA1.to_csv('run_winners_EA1_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+        run_winners_EA2.to_csv('run_winners_EA2_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
         
-    # Write the logbook to a csv
-    log_df = pd.DataFrame(logbook)
-    log_df.to_csv('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
+        # Write the logbook to a csv
+        log_df = pd.DataFrame(logbook)
+        log_df.to_csv('logbook_enemy_' + str(FLAGS.enemy) + '_task_II.csv')
 
 
 # Make variables passable from command line for quick changes
